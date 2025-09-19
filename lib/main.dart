@@ -5,6 +5,14 @@ import 'app/themes/app_theme.dart';
 import 'core/services/hive_service.dart';
 import 'core/services/theme_controller.dart';
 
+/// Main entry point for the Invoice App
+/// 
+/// A modern, minimalistic invoice management application with:
+/// - Clean iOS-style design
+/// - Client management
+/// - Manual invoice creation
+/// - Multi-currency support
+/// - PDF generation
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await HiveService.instance.init();
