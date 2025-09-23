@@ -1,27 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/themes/app_theme.dart';
 import '../../core/models/invoice.dart';
 import '../../core/services/invoice_repository.dart';
+import '../../core/services/currency_service.dart';
+import '../../core/utils/currency_formatter.dart';
+import '../../core/utils/responsive_utils.dart';
+import '../../core/widgets/enhanced_ad_widget.dart';
 import 'invoice_detail_screen.dart';
 import 'invoice_wizard_sheet.dart';
 
 class InvoicesScreen extends ConsumerWidget {
   const InvoicesScreen({super.key});
 
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(invoiceRepositoryProvider);
+    final currencyService = ref.watch(currencyServiceProvider);
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // iOS-style background
+      backgroundColor: AppTheme.getBackgroundColor(context), // iOS-style background
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Invoices',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.getTextPrimaryColor(context),
           ),
         ),
         backgroundColor: Colors.transparent,
@@ -29,32 +36,6 @@ class InvoicesScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => _showInvoiceForm(context, ref),
-                icon: const Icon(
-                  Icons.add,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: StreamBuilder<List<Invoice>>(
         stream: repo.watchAll(),
@@ -68,20 +49,21 @@ class InvoicesScreen extends ConsumerWidget {
           }
           
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: context.responsivePadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Stats Banner
-                _StatsCard(invoices: invoices),
+                _StatsCard(invoices: invoices, currencyService: currencyService),
 
-                const SizedBox(height: 24),
+                SizedBox(height: context.responsiveHeight(3)),
 
                 // Invoices List
                 _InvoicesGroup(
                   title: 'All Invoices',
                   invoices: invoices,
                   repository: repo,
+                  currencyService: currencyService,
                 ),
 
                 const SizedBox(height: 80),
@@ -90,12 +72,8 @@ class InvoicesScreen extends ConsumerWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: _AnimatedCreateInvoiceFab(
         onPressed: () => _showInvoiceForm(context, ref),
-        backgroundColor: const Color(0xFF6366F1),
-        foregroundColor: Colors.white,
-        elevation: 4,
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -118,37 +96,38 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(40),
+      padding: EdgeInsets.all(context.responsiveWidth(10)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(context.responsiveWidth(8)),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(24),
+              color: AppTheme.getTextSecondaryColor(context).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(context.responsiveBorderRadius(mobile: 20, tablet: 24, desktop: 28)),
             ),
-            child: const Icon(
-              Icons.receipt_long_outlined,
-              size: 64,
-              color: Color(0xFF6366F1),
+            child: Image.asset(
+              'assets/logo/applogo.png',
+              width: context.responsiveIconSize(mobile: 48, tablet: 64, desktop: 80),
+              height: context.responsiveIconSize(mobile: 48, tablet: 64, desktop: 80),
+              color: AppTheme.getTextPrimaryColor(context),
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
+          SizedBox(height: context.responsiveHeight(3)),
+          Text(
             'No invoices yet',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: context.responsiveFontSize(24),
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: AppTheme.getTextPrimaryColor(context),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Create your first invoice to get started',
             style: TextStyle(
-              fontSize: 17,
-              color: Color(0xFF8E8E93),
+              fontSize: context.responsiveFontSize(17),
+              color: AppTheme.getTextSecondaryColor(context),
             ),
             textAlign: TextAlign.center,
           ),
@@ -156,18 +135,21 @@ class _EmptyState extends StatelessWidget {
           ElevatedButton(
             onPressed: onCreateInvoice,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
+              backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: EdgeInsets.symmetric(
+                horizontal: context.responsiveWidth(6),
+                vertical: context.responsiveHeight(1.5),
+              ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
               ),
               elevation: 0,
             ),
-            child: const Text(
+            child: Text(
               'Create Your First Invoice',
               style: TextStyle(
-                fontSize: 17,
+                fontSize: context.responsiveFontSize(17),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -180,8 +162,9 @@ class _EmptyState extends StatelessWidget {
 
 class _StatsCard extends StatelessWidget {
   final List<Invoice> invoices;
+  final dynamic currencyService;
 
-  const _StatsCard({required this.invoices});
+  const _StatsCard({required this.invoices, required this.currencyService});
 
   @override
   Widget build(BuildContext context) {
@@ -191,42 +174,75 @@ class _StatsCard extends StatelessWidget {
     
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: context.responsivePadding,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.getTextPrimaryColor(context),
+            AppTheme.getTextSecondaryColor(context),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.receipt_long_rounded,
-                color: Colors.white,
-                size: 28,
+                color: AppTheme.getCardSurfaceColor(context),
+                size: context.responsiveIconSize(mobile: 24, tablet: 28, desktop: 32),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: context.responsiveWidth(4)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '\$${totalAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final displayCurrencyAsync = ref.watch(displayCurrencyFutureProvider);
+                        return displayCurrencyAsync.when(
+                          data: (displayCurrency) => FutureBuilder<String>(
+                            key: ValueKey('stats-total-$displayCurrency'),
+                            future: currencyService.convertAmount(totalAmount, 'USD'),
+                            builder: (context, snapshot) {
+                              final displayAmount = snapshot.data ?? totalAmount.formatAsCurrency(displayCurrency);
+                              return Text(
+                                displayAmount,
+                                style: TextStyle(
+                                  color: AppTheme.getCardSurfaceColor(context),
+                                  fontSize: context.responsiveFontSize(24),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              );
+                            },
+                          ),
+                          loading: () => Text(
+                            totalAmount.formatAsCurrency('USD'), // Fallback to USD for loading
+                            style: TextStyle(
+                              color: AppTheme.getCardSurfaceColor(context),
+                              fontSize: context.responsiveFontSize(24),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          error: (error, stack) => Text(
+                            totalAmount.formatAsCurrency('USD'), // Fallback to USD for error
+                            style: TextStyle(
+                              color: AppTheme.getCardSurfaceColor(context),
+                              fontSize: context.responsiveFontSize(24),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     Text(
                       '${invoices.length} ${invoices.length == 1 ? 'Invoice' : 'Invoices'}',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppTheme.getCardSurfaceColor(context),
                         fontSize: 15,
                         fontWeight: FontWeight.w400,
                       ),
@@ -284,15 +300,15 @@ class _StatItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
+        color: AppTheme.getCardSurfaceColor(context).withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppTheme.getCardSurfaceColor(context),
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),
@@ -300,8 +316,8 @@ class _StatItem extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppTheme.getCardSurfaceColor(context),
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -316,12 +332,105 @@ class _InvoicesGroup extends StatelessWidget {
   final String title;
   final List<Invoice> invoices;
   final InvoiceRepository repository;
+  final dynamic currencyService;
 
   const _InvoicesGroup({
     required this.title,
     required this.invoices,
     required this.repository,
+    required this.currencyService,
   });
+
+  List<Widget> _buildInvoiceListWithAds(BuildContext context, List<Invoice> invoices, InvoiceRepository repository, dynamic currencyService) {
+    final List<Widget> widgets = [];
+    const int adInterval = 3; // Show ad after every 3 invoices
+
+    for (int i = 0; i < invoices.length; i++) {
+      // Add invoice item
+      widgets.add(
+        _InvoiceItem(
+          invoice: invoices[i],
+          currencyService: currencyService,
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (ctx) => Container(
+                height: MediaQuery.of(context).size.height * 0.9,
+                decoration: BoxDecoration(
+                  color: AppTheme.getCardSurfaceColor(context),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: InvoiceDetailScreen(invoice: invoices[i]),
+              ),
+            );
+          },
+          onDelete: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Text(
+                  'Delete Invoice',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.getTextPrimaryColor(context),
+                  ),
+                ),
+                content: Text(
+                  'Are you sure you want to delete this invoice? This action cannot be undone.',
+                  style: TextStyle(
+                    color: AppTheme.getTextSecondaryColor(context),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: AppTheme.getTextSecondaryColor(context),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      repository.delete(invoices[i].id);
+                      Navigator.of(ctx).pop();
+                    },
+                    child: const Text(
+                      'Delete',
+                      style: TextStyle(color: Color(0xFFEF4444)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      // Add divider if not the last item
+      if (i < invoices.length - 1) {
+        widgets.add(
+          const Divider(
+            height: 1,
+            indent: 68,
+          ),
+        );
+      }
+
+      // Add native ad after every adInterval invoices (but not after the last one)
+      if ((i + 1) % adInterval == 0 && i < invoices.length - 1) {
+        widgets.add(const AdSeparator());
+        widgets.add(const EnhancedNativeAdWidget());
+      }
+    }
+
+    return widgets;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -329,117 +438,40 @@ class _InvoicesGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          padding: EdgeInsets.only(left: context.responsiveWidth(4), bottom: context.responsiveHeight(1)),
           child: Text(
             title,
-            style: const TextStyle(
-              fontSize: 22,
+            style: TextStyle(
+              fontSize: context.responsiveFontSize(22),
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: AppTheme.getTextPrimaryColor(context),
             ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: AppTheme.getCardSurfaceColor(context),
+            borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
           ),
           child: Column(
-            children: invoices.asMap().entries.map((entry) {
-              final index = entry.key;
-              final invoice = entry.value;
-              return Column(
-                children: [
-                  _InvoiceItem(
-                    invoice: invoice,
-                    onTap: () => _showInvoiceDetail(context, invoice),
-                    onDelete: () => _showDeleteDialog(context, invoice),
-                  ),
-                  if (index < invoices.length - 1)
-                    const Divider(
-                      height: 1,
-                      indent: 68,
-                      color: Color(0xFFE5E5E7),
-                    ),
-                ],
-              );
-            }).toList(),
+            children: _buildInvoiceListWithAds(context, invoices, repository, currencyService),
           ),
         ),
       ],
     );
   }
 
-  void _showInvoiceDetail(BuildContext context, Invoice invoice) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: InvoiceDetailScreen(invoice: invoice),
-      ),
-    );
-  }
-
-  void _showDeleteDialog(BuildContext context, Invoice invoice) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Delete Invoice',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: Text(
-          'Are you sure you want to delete invoice ${invoice.invoiceNumber}?',
-          style: const TextStyle(fontSize: 17),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                fontSize: 17,
-                color: Color(0xFF6366F1),
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              repository.delete(invoice.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text(
-              'Delete',
-              style: TextStyle(
-                fontSize: 17,
-                color: Colors.red,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _InvoiceItem extends StatelessWidget {
   final Invoice invoice;
+  final CurrencyService currencyService;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _InvoiceItem({
     required this.invoice,
+    required this.currencyService,
     required this.onTap,
     required this.onDelete,
   });
@@ -450,27 +482,27 @@ class _InvoiceItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: context.responsivePadding,
           child: Row(
             children: [
               // Invoice icon
               Container(
-                width: 40,
-                height: 40,
+                width: context.responsiveIconSize(mobile: 36, tablet: 40, desktop: 44),
+                height: context.responsiveIconSize(mobile: 36, tablet: 40, desktop: 44),
                 decoration: BoxDecoration(
                   color: _getStatusColor(invoice.status).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
                 ),
                 child: Icon(
                   Icons.receipt_long_rounded,
                   color: _getStatusColor(invoice.status),
-                  size: 20,
+                  size: context.responsiveIconSize(mobile: 18, tablet: 20, desktop: 22),
                 ),
               ),
-              
-              const SizedBox(width: 12),
+
+              SizedBox(width: context.responsiveWidth(3)),
               
               // Invoice info
               Expanded(
@@ -482,10 +514,10 @@ class _InvoiceItem extends StatelessWidget {
                         Expanded(
                           child: Text(
                             invoice.invoiceNumber,
-                            style: const TextStyle(
-                              fontSize: 17,
+                            style: TextStyle(
+                              fontSize: context.responsiveFontSize(17),
                               fontWeight: FontWeight.w600,
-                              color: Colors.black,
+                              color: AppTheme.getTextPrimaryColor(context),
                             ),
                           ),
                         ),
@@ -495,19 +527,49 @@ class _InvoiceItem extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       invoice.client.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF8E8E93),
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(15),
+                        color: AppTheme.getTextSecondaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      '${invoice.currencyCode ?? 'USD'} ${invoice.totalAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final displayCurrencyAsync = ref.watch(displayCurrencyFutureProvider);
+                        return displayCurrencyAsync.when(
+                          data: (displayCurrency) => FutureBuilder<String>(
+                            key: ValueKey('invoice-${invoice.id}-$displayCurrency'),
+                            future: currencyService.convertAmount(invoice.totalAmount, invoice.currencyCode ?? 'USD'),
+                            builder: (context, snapshot) {
+                              final displayAmount = snapshot.data ?? invoice.totalAmount.formatAsCurrency(invoice.currencyCode ?? 'USD');
+                              return Text(
+                                displayAmount,
+                                style: TextStyle(
+                                  fontSize: context.responsiveFontSize(15),
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.getTextPrimaryColor(context),
+                                ),
+                              );
+                            },
+                          ),
+                          loading: () => Text(
+                            invoice.totalAmount.formatAsCurrency(invoice.currencyCode ?? 'USD'),
+                            style: TextStyle(
+                              fontSize: context.responsiveFontSize(15),
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.getTextPrimaryColor(context),
+                            ),
+                          ),
+                          error: (error, stack) => Text(
+                            invoice.totalAmount.formatAsCurrency(invoice.currencyCode ?? 'USD'),
+                            style: TextStyle(
+                              fontSize: context.responsiveFontSize(15),
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.getTextPrimaryColor(context),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -523,30 +585,30 @@ class _InvoiceItem extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'view',
                     child: Row(
                       children: [
-                        Icon(Icons.visibility_rounded, size: 20),
+                        Icon(Icons.visibility_rounded, size: 20, color: AppTheme.getTextSecondaryColor(context)),
                         SizedBox(width: 12),
                         Text('View Details'),
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+                        Icon(Icons.delete_forever_rounded, size: 20, color: const Color(0xFFEF4444)),
                         SizedBox(width: 12),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
+                        Text('Delete', style: TextStyle(color: const Color(0xFFEF4444))),
                       ],
                     ),
                   ),
                 ],
-                icon: const Icon(
+                icon: Icon(
                   Icons.more_horiz,
-                  color: Color(0xFF8E8E93),
+                  color: AppTheme.getTextSecondaryColor(context),
                   size: 20,
                 ),
               ),
@@ -557,19 +619,8 @@ class _InvoiceItem extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor(InvoiceStatus status) {
-    switch (status) {
-      case InvoiceStatus.paid:
-        return const Color(0xFF10B981);
-      case InvoiceStatus.unpaid:
-        return const Color(0xFFF59E0B);
-      case InvoiceStatus.partiallyPaid:
-        return const Color(0xFF6366F1);
-      case InvoiceStatus.overdue:
-        return const Color(0xFFEF4444);
-      case InvoiceStatus.draft:
-        return const Color(0xFF6B7280);
-    }
+  static Color _getStatusColor(InvoiceStatus status) {
+    return InvoiceStatusColors.getColor(status);
   }
 }
 
@@ -579,29 +630,21 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bg;
-    Color fg;
+    final statusColor = InvoiceStatusColors.getColor(status);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = statusColor.withValues(alpha: isDark ? 0.2 : 0.1);
+    final fg = statusColor;
     String label;
     switch (status) {
       case InvoiceStatus.paid:
-        bg = const Color(0xFFD1FAE5); 
-        fg = const Color(0xFF10B981); 
         label = 'Paid';
       case InvoiceStatus.unpaid:
-        bg = const Color(0xFFFEF3C7); 
-        fg = const Color(0xFFF59E0B); 
         label = 'Unpaid';
       case InvoiceStatus.partiallyPaid:
-        bg = const Color(0xFFE0E7FF); 
-        fg = const Color(0xFF6366F1); 
         label = 'Partial';
       case InvoiceStatus.overdue:
-        bg = const Color(0xFFFEE2E2); 
-        fg = const Color(0xFFEF4444); 
         label = 'Overdue';
       case InvoiceStatus.draft:
-        bg = const Color(0xFFE5E7EB); 
-        fg = const Color(0xFF6B7280); 
         label = 'Draft';
     }
     return Container(
@@ -618,6 +661,60 @@ class _StatusChip extends StatelessWidget {
           fontSize: 12,
         ),
       ),
+    );
+  }
+}
+
+class _AnimatedCreateInvoiceFab extends StatefulWidget {
+  const _AnimatedCreateInvoiceFab({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  State<_AnimatedCreateInvoiceFab> createState() => _AnimatedCreateInvoiceFabState();
+}
+
+class _AnimatedCreateInvoiceFabState extends State<_AnimatedCreateInvoiceFab> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+  late final Animation<double> _elevation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _scale = Tween<double>(begin: 0.96, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
+    );
+    _elevation = Tween<double>(begin: 2, end: 6).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scale.value,
+          child: FloatingActionButton(
+            onPressed: widget.onPressed,
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: _elevation.value,
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 }

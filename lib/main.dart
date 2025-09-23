@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'app/routes/app_router.dart';
 import 'app/themes/app_theme.dart';
 import 'core/services/hive_service.dart';
 import 'core/services/theme_controller.dart';
+import 'core/services/currency_service.dart';
+import 'core/services/error_service.dart';
 
 /// Main entry point for the Invoice App
 /// 
@@ -14,9 +17,59 @@ import 'core/services/theme_controller.dart';
 /// - Multi-currency support
 /// - PDF generation
 Future<void> main() async {
+  // Initialize Flutter binding first
   WidgetsFlutterBinding.ensureInitialized();
-  await HiveService.instance.init();
-  runApp(const ProviderScope(child: MyApp()));
+  
+  // Initialize global error handling
+  ErrorService.instance.initialize();
+
+  try {
+    // Initialize Hive database
+    await HiveService.instance.init();
+
+    // Initialize Google Mobile Ads
+    await MobileAds.instance.initialize();
+
+    runApp(const ProviderScope(child: MyApp()));
+  } catch (error, stackTrace) {
+    ErrorService.handleError(
+      error,
+      stackTrace,
+      context: 'App initialization',
+      fatal: true,
+    );
+    
+    // Run a minimal error app if main app fails to initialize
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to initialize app',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Error: ${error.toString()}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends ConsumerWidget {
@@ -32,8 +85,12 @@ class MyApp extends ConsumerWidget {
         : appThemeMode == AppThemeMode.light
             ? ThemeMode.light
             : ThemeMode.system;
+
+    // Initialize currency service in background
+    ref.watch(currencyServiceProvider).initialize();
+
     return MaterialApp.router(
-      title: 'Invoice Generator',
+      title: 'BillExpert',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,

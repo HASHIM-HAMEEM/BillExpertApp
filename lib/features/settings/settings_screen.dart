@@ -3,43 +3,34 @@ import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 
+import '../../app/themes/app_theme.dart';
 import '../../core/models/merchant.dart';
-import '../../core/models/fx_rates.dart';
+import '../../core/models/currency.dart';
 import '../../core/services/merchant_repository.dart';
-import '../../core/services/fx_rates_repository.dart';
+import '../../core/services/currency_service.dart';
 import '../../core/services/theme_controller.dart';
+import '../../core/utils/responsive_utils.dart';
+import 'package:url_launcher/url_launcher.dart' as launcher;
+import 'package:flutter/services.dart';
 
-class SettingsScreen extends ConsumerStatefulWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _scrollController = ScrollController();
-  
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final merchantRepo = ref.watch(merchantRepositoryProvider);
-    final fxRepo = ref.watch(fxRatesRepositoryProvider);
+    final currencyService = ref.watch(currencyServiceProvider);
     final themeController = ref.watch(themeControllerProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // iOS-style background
+      backgroundColor: AppTheme.getBackgroundColor(context), // Theme-aware background
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Settings',
           style: TextStyle(
-            fontSize: 17,
+            fontSize: context.responsiveFontSize(17),
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.getTextPrimaryColor(context),
           ),
         ),
         backgroundColor: Colors.transparent,
@@ -47,53 +38,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
       ),
       body: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
+        padding: context.responsivePadding,
         child: Column(
           children: [
-            // Premium Banner (matching the image)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Premium Membership',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Upgrade for more features',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
 
             // Settings Section
             _SettingsGroup(
@@ -114,10 +63,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: 'Appearance',
                   onTap: () => _showAppearanceSheet(context, themeController),
                 ),
-                _SettingItem(
-                  icon: Icons.currency_exchange_outlined,
-                  title: 'Exchange Rates',
-                  onTap: () => _showFxRatesSheet(context, fxRepo),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final displayCurrencyAsync = ref.watch(displayCurrencyFutureProvider);
+                    return _SettingItem(
+                      icon: Icons.currency_exchange_outlined,
+                      title: 'Currency',
+                      subtitle: displayCurrencyAsync.maybeWhen(
+                        data: (currency) => currency,
+                        orElse: () => 'USD',
+                      ),
+                      onTap: () => _showCurrencySheet(context, merchantRepo, currencyService, ref),
+                    );
+                  },
                 ),
               ],
             ),
@@ -129,30 +87,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               title: 'More',
               children: [
                 _SettingItem(
-                  icon: Icons.star_outline,
-                  title: 'Rate & Review',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Rate & Review coming soon')),
-                    );
-                  },
+                  icon: Icons.info_outline,
+                  title: 'About',
+                  onTap: () => _showAboutSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.help_outline,
                   title: 'Help',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Help coming soon')),
-                    );
-                  },
+                  onTap: () => _showHelpSheet(context),
                 ),
               ],
             ),
 
-            const SizedBox(height: 80),
+            const SizedBox(height: 40),
+
+            // Palestine Support Message
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.getCardSurfaceColor(context),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.getBorderColor(context),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    '🇵🇸',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Free Palestine',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 40),
           ],
         ),
       ),
+
     );
   }
 
@@ -183,12 +167,64 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showFxRatesSheet(BuildContext context, FxRatesRepository repo) {
+  void _showCurrencySheet(BuildContext context, MerchantRepository repo, dynamic currencyService, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _FxRatesSheet(repository: repo),
+      builder: (ctx) => _CurrencySheet(repository: repo, currencyService: currencyService, ref: ref),
+    );
+  }
+
+  void _showAboutSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AboutSheet(),
+    );
+  }
+
+  void _showHelpSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _HelpSheet(),
+    );
+  }
+
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _PrimaryButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -208,20 +244,21 @@ class _SettingsGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          padding: EdgeInsets.only(left: context.responsiveWidth(4), bottom: context.responsiveHeight(1)),
           child: Text(
             title,
-            style: const TextStyle(
-              fontSize: 22,
+            style: TextStyle(
+              fontSize: context.responsiveFontSize(22),
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: AppTheme.getTextPrimaryColor(context),
             ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: AppTheme.getCardSurfaceColor(context),
+            borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
+            border: Border.all(color: AppTheme.getBorderColor(context)),
           ),
           child: Column(
             children: children.asMap().entries.map((entry) {
@@ -231,10 +268,10 @@ class _SettingsGroup extends StatelessWidget {
                 children: [
                   child,
                   if (index < children.length - 1)
-                    const Divider(
+                    Divider(
                       height: 1,
                       indent: 52,
-                      color: Color(0xFFE5E5E7),
+                      color: AppTheme.getDividerColor(context),
                     ),
                 ],
               );
@@ -249,11 +286,13 @@ class _SettingsGroup extends StatelessWidget {
 class _SettingItem extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String? subtitle;
   final VoidCallback onTap;
 
   const _SettingItem({
     required this.icon,
     required this.title,
+    this.subtitle,
     required this.onTap,
   });
 
@@ -263,36 +302,136 @@ class _SettingItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: context.responsivePadding,
           child: Row(
             children: [
               Icon(
                 icon,
-                size: 24,
-                color: Colors.black87,
+                size: context.responsiveIconSize(),
+                color: AppTheme.getTextPrimaryColor(context),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: context.responsiveWidth(4)),
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.black,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(17),
+                        fontWeight: FontWeight.w400,
+                        color: AppTheme.getTextPrimaryColor(context),
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          fontSize: context.responsiveFontSize(14),
+                          color: AppTheme.getTextSecondaryColor(context),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                size: 20,
-                color: Color(0xFF8E8E93),
+                size: context.responsiveIconSize(mobile: 18, tablet: 20, desktop: 22),
+                color: AppTheme.getTextSecondaryColor(context),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PreferenceField extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String name;
+  final String? initialValue;
+  final String? placeholder;
+  final TextInputType? keyboardType;
+  final int? maxLines;
+  final FormFieldValidator<String>? validator;
+
+  const _PreferenceField({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.name,
+    this.initialValue,
+    this.placeholder,
+    this.keyboardType,
+    this.maxLines = 1,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Icon and Title Row
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.getTextSecondaryColor(context).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: AppTheme.getTextSecondaryColor(context),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.getTextSecondaryColor(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Input Field
+        _SheetInputField(
+          name: name,
+          label: '',
+          initialValue: initialValue,
+          placeholder: placeholder,
+          keyboardType: keyboardType,
+          maxLines: maxLines ?? 1,
+          validator: validator,
+        ),
+      ],
     );
   }
 }
@@ -329,8 +468,8 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -350,83 +489,93 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E5E7),
+                  color: AppTheme.getBorderColor(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 20),
 
               // Header
-              const Text(
-                'Profile',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Profile',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
 
-              // Form
+              // Profile Section
               Flexible(
                 child: SingleChildScrollView(
-                  child: FormBuilder(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        _SheetInputField(
-                          name: 'businessName',
-                          label: 'Business Name',
-                          initialValue: _profile!.businessName,
-                          validator: FormBuilderValidators.required(),
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'email',
-                          label: 'Email',
-                          initialValue: _profile!.email,
-                          keyboardType: TextInputType.emailAddress,
-                          validator: FormBuilderValidators.email(),
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'phone',
-                          label: 'Phone',
-                          initialValue: _profile!.phone,
-                          keyboardType: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'address',
-                          label: 'Address',
-                          initialValue: _profile!.address,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _saveProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: const Text(
-                              'Save Changes',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
+                  child: Column(
+                    children: [
+                      _SettingsGroup(
+                        title: 'Business Information',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: FormBuilder(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  _SheetInputField(
+                                    name: 'businessName',
+                                    label: 'Business Name',
+                                    initialValue: _profile!.businessName,
+                                    validator: FormBuilderValidators.required(),
+                                  ),
+                                  SizedBox(height: context.responsiveHeight(2)),
+                                  _SheetInputField(
+                                    name: 'email',
+                                    label: 'Email',
+                                    initialValue: _profile!.email,
+                                    keyboardType: TextInputType.emailAddress,
+                                    validator: FormBuilderValidators.email(),
+                                  ),
+                                  SizedBox(height: context.responsiveHeight(2)),
+                                  _SheetInputField(
+                                    name: 'phone',
+                                    label: 'Phone',
+                                    initialValue: _profile!.phone,
+                                    keyboardType: TextInputType.phone,
+                                  ),
+                                  SizedBox(height: context.responsiveHeight(2)),
+                                  _SheetInputField(
+                                    name: 'address',
+                                    label: 'Address',
+                                    initialValue: _profile!.address,
+                                    maxLines: 3,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: _PrimaryButton(label: 'Save Changes', onPressed: _saveProfile),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),
@@ -495,8 +644,8 @@ class _InvoicePreferencesSheetState extends State<_InvoicePreferencesSheet> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -516,88 +665,157 @@ class _InvoicePreferencesSheetState extends State<_InvoicePreferencesSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E5E7),
+                  color: AppTheme.getBorderColor(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 20),
 
               // Header
-              const Text(
-                'Invoice Preferences',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Invoice Preferences',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Subtitle
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Text(
+                  'Customize your invoice defaults and settings',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.getTextSecondaryColor(context),
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
 
-              // Form
+              // Content
               Flexible(
                 child: SingleChildScrollView(
-                  child: FormBuilder(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        _SheetInputField(
-                          name: 'invoicePrefix',
-                          label: 'Invoice Number Prefix',
-                          initialValue: _profile!.invoicePrefix,
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'currencyCode',
-                          label: 'Default Currency',
-                          initialValue: _profile!.currencyCode,
-                          validator: FormBuilderValidators.required(),
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'defaultDueDays',
-                          label: 'Default Due Days',
-                          initialValue: _profile!.defaultDueDays?.toString(),
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'defaultTerms',
-                          label: 'Default Terms',
-                          initialValue: _profile!.defaultTerms,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'defaultNotes',
-                          label: 'Default Notes',
-                          initialValue: _profile!.defaultNotes,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _savePreferences,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: const Text(
-                              'Save Changes',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
+                  child: Column(
+                    children: [
+                      // Invoice Numbering Section
+                      _SettingsGroup(
+                        title: 'Invoice Numbering',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: FormBuilder(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  _PreferenceField(
+                                    icon: Icons.tag,
+                                    title: 'Invoice Prefix',
+                                    subtitle: 'Prefix for all invoice numbers (e.g., INV)',
+                                    name: 'invoicePrefix',
+                                    initialValue: _profile!.invoicePrefix,
+                                    placeholder: 'INV',
+                                  ),
+                                  SizedBox(height: context.responsiveHeight(2)),
+                                  _PreferenceField(
+                                    icon: Icons.attach_money,
+                                    title: 'Default Currency',
+                                    subtitle: 'Currency used for new invoices',
+                                    name: 'currencyCode',
+                                    initialValue: _profile!.currencyCode,
+                                    placeholder: 'USD',
+                                    validator: FormBuilderValidators.required(),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Payment Terms Section
+                      _SettingsGroup(
+                        title: 'Payment Terms',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: _PreferenceField(
+                              icon: Icons.schedule,
+                              title: 'Default Due Days',
+                              subtitle: 'Number of days until invoice is due (e.g., 30)',
+                              name: 'defaultDueDays',
+                              initialValue: _profile!.defaultDueDays?.toString(),
+                              placeholder: '30',
+                              keyboardType: TextInputType.number,
+                              validator: FormBuilderValidators.compose([
+                                FormBuilderValidators.numeric(),
+                                FormBuilderValidators.min(1),
+                                FormBuilderValidators.max(365),
+                              ]),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Content Templates Section
+                      _SettingsGroup(
+                        title: 'Content Templates',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: Column(
+                              children: [
+                                _PreferenceField(
+                                  icon: Icons.description,
+                                  title: 'Default Terms & Conditions',
+                                  subtitle: 'Terms that appear on all invoices',
+                                  name: 'defaultTerms',
+                                  initialValue: _profile!.defaultTerms,
+                                  maxLines: 4,
+                                  placeholder: 'Payment due within 30 days. Late fees may apply.',
+                                ),
+                                const SizedBox(height: 20),
+                                _PreferenceField(
+                                  icon: Icons.note,
+                                  title: 'Default Notes',
+                                  subtitle: 'Additional notes or instructions',
+                                  name: 'defaultNotes',
+                                  initialValue: _profile!.defaultNotes,
+                                  maxLines: 4,
+                                  placeholder: 'Thank you for your business!',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: _PrimaryButton(label: 'Save Preferences', onPressed: _savePreferences),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),
@@ -644,14 +862,19 @@ class _AppearanceSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            top: 20,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -660,56 +883,75 @@ class _AppearanceSheet extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E5E7),
+                  color: AppTheme.getBorderColor(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 20),
 
               // Header
-              const Text(
-                'Appearance',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Appearance',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
 
-              // Theme options
-              Consumer(
-                builder: (context, ref, child) {
-                  final currentTheme = ref.watch(themeControllerProvider);
-                  
-                  return Column(
-                    children: [
-                      _ThemeOption(
-                        title: 'System',
-                        subtitle: 'Follow device settings',
-                        isSelected: currentTheme == AppThemeMode.system,
-                        onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.system),
-                      ),
-                      const SizedBox(height: 12),
-                      _ThemeOption(
-                        title: 'Light',
-                        subtitle: 'Always light theme',
-                        isSelected: currentTheme == AppThemeMode.light,
-                        onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.light),
-                      ),
-                      const SizedBox(height: 12),
-                      _ThemeOption(
-                        title: 'Dark',
-                        subtitle: 'Always dark theme',
-                        isSelected: currentTheme == AppThemeMode.dark,
-                        onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.dark),
-                      ),
-                    ],
-                  );
-                },
+              // Theme Section
+              _SettingsGroup(
+                title: 'Theme',
+                children: [
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final currentTheme = ref.watch(themeControllerProvider);
+
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            _ThemeOption(
+                              title: 'System',
+                              subtitle: 'Follow device settings',
+                              isSelected: currentTheme == AppThemeMode.system,
+                              onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.system),
+                            ),
+                            const SizedBox(height: 12),
+                            _ThemeOption(
+                              title: 'Light',
+                              subtitle: 'Always light theme',
+                              isSelected: currentTheme == AppThemeMode.light,
+                              onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.light),
+                            ),
+                            const SizedBox(height: 12),
+                            _ThemeOption(
+                              title: 'Dark',
+                              subtitle: 'Always dark theme',
+                              isSelected: currentTheme == AppThemeMode.dark,
+                              onTap: () => ref.read(themeControllerProvider.notifier).setTheme(AppThemeMode.dark),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-              
-              const SizedBox(height: 20),
+
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -741,10 +983,10 @@ class _ThemeOption extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F7),
+            color: AppTheme.getBackgroundColor(context),
             borderRadius: BorderRadius.circular(12),
             border: isSelected 
-              ? Border.all(color: const Color(0xFF6366F1), width: 2)
+              ? Border.all(color: AppColors.primary, width: 2)
               : null,
           ),
           child: Row(
@@ -755,27 +997,27 @@ class _ThemeOption extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black,
+                        color: AppTheme.getTextPrimaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
-                        color: Color(0xFF8E8E93),
+                        color: AppTheme.getTextSecondaryColor(context),
                       ),
                     ),
                   ],
                 ),
               ),
               if (isSelected)
-                const Icon(
+                Icon(
                   Icons.check_circle,
-                  color: Color(0xFF6366F1),
+                  color: AppTheme.getTextPrimaryColor(context),
                   size: 24,
                 ),
             ],
@@ -787,35 +1029,168 @@ class _ThemeOption extends StatelessWidget {
 }
 
 // FX Rates Sheet
-class _FxRatesSheet extends StatefulWidget {
-  final FxRatesRepository repository;
+class _CurrencySheet extends StatefulWidget {
+  final MerchantRepository repository;
+  final dynamic currencyService;
+  final WidgetRef ref;
 
-  const _FxRatesSheet({required this.repository});
+  const _CurrencySheet({required this.repository, required this.currencyService, required this.ref});
 
   @override
-  State<_FxRatesSheet> createState() => _FxRatesSheetState();
+  State<_CurrencySheet> createState() => _CurrencySheetState();
 }
 
-class _FxRatesSheetState extends State<_FxRatesSheet> {
+class _CurrencySheetState extends State<_CurrencySheet> {
   final _formKey = GlobalKey<FormBuilderState>();
-  FxRates? _fxRates;
+  MerchantProfile? _profile;
+  Currency? _selectedCurrency;
+  bool _isRefreshingRates = false;
+  String? _lastUpdated;
 
   @override
   void initState() {
     super.initState();
-    _loadFxRates();
+    _loadProfile();
+    _loadLastUpdated();
   }
 
-  Future<void> _loadFxRates() async {
-    final rates = await widget.repository.getFxRates();
-    setState(() => _fxRates = rates);
+  Future<void> _loadProfile() async {
+    final profile = await widget.repository.getProfile();
+    if (profile != null) {
+      setState(() {
+        _profile = profile;
+        _selectedCurrency = Currency.findByCode(profile.displayCurrencyCode ?? profile.currencyCode) ?? Currency.defaultCurrency;
+      });
+    }
+  }
+
+  Future<void> _loadLastUpdated() async {
+    final lastUpdated = await widget.currencyService.getLastUpdated();
+    if (lastUpdated != null) {
+      setState(() {
+        _lastUpdated = _formatLastUpdated(lastUpdated);
+      });
+    }
+  }
+
+  Future<void> _refreshRates() async {
+    setState(() => _isRefreshingRates = true);
+
+    try {
+      final hasInternet = await widget.currencyService.hasInternetConnection();
+
+      if (!hasInternet) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No internet connection. Please check your network and try again.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() => _isRefreshingRates = false);
+        return;
+      }
+
+      final success = await widget.currencyService.refreshExchangeRates();
+
+      if (success) {
+        await _loadLastUpdated();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Exchange rates updated successfully')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update exchange rates. The service might be temporarily unavailable.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('An error occurred while updating rates. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingRates = false);
+      }
+    }
+  }
+
+  String _formatLastUpdated(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours}h ago';
+    } else {
+      return '${difference.inDays}d ago';
+    }
+  }
+
+  Future<void> _saveCurrency() async {
+    if (_formKey.currentState?.saveAndValidate() ?? false) {
+      final formData = _formKey.currentState!.value;
+      final currencyCode = formData['currency'] as String;
+
+      try {
+        final success = await widget.currencyService.setDisplayCurrency(currencyCode);
+
+        if (success) {
+          // Refresh the display currency state
+          widget.ref.invalidate(displayCurrencyFutureProvider);
+
+          if (mounted) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Display currency changed to ${Currency.findByCode(currencyCode)?.name ?? currencyCode}. All amounts will now be shown in this currency.'),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to update display currency'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('An error occurred while updating currency'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -835,116 +1210,240 @@ class _FxRatesSheetState extends State<_FxRatesSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E5E7),
+                  color: AppTheme.getBorderColor(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 20),
 
               // Header
-              const Text(
-                'Exchange Rates',
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Display Currency',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose your preferred currency for displaying amounts. Exchange rates will be applied automatically.',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  fontSize: 14,
+                  color: AppTheme.getTextSecondaryColor(context),
                 ),
               ),
               const SizedBox(height: 24),
 
-              // Form
+              // Content
               Flexible(
                 child: SingleChildScrollView(
-                  child: FormBuilder(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        _SheetInputField(
-                          name: 'baseCurrency',
-                          label: 'Base Currency',
-                          initialValue: _fxRates?.baseCurrency ?? 'USD',
-                          validator: FormBuilderValidators.required(),
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'eurRate',
-                          label: 'EUR Rate',
-                          initialValue: _fxRates?.rates['EUR']?.toString() ?? '0.85',
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-                        _SheetInputField(
-                          name: 'gbpRate',
-                          label: 'GBP Rate',
-                          initialValue: _fxRates?.rates['GBP']?.toString() ?? '0.75',
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _saveFxRates,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: const Text(
-                              'Save Changes',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
+                  child: Column(
+                    children: [
+                      _SettingsGroup(
+                        title: 'Currency Preference',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: FormBuilder(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  FormBuilderDropdown<String>(
+                                    name: 'currency',
+                                    initialValue: _profile?.currencyCode ?? 'USD',
+                                    key: ValueKey(_profile?.currencyCode ?? 'USD'),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Display Currency',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    validator: FormBuilderValidators.required(),
+                                    items: Currency.allCurrencies.map((currency) {
+                                      return DropdownMenuItem<String>(
+                                        value: currency.code,
+                                        child: Row(
+                                          children: [
+                                            Text(currency.flag, style: TextStyle(fontSize: 20)),
+                                            const SizedBox(width: 12),
+                                            Text('${currency.name} (${currency.code})'),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedCurrency = Currency.findByCode(value ?? 'USD');
+                                      });
+                                    },
+                                  ),
+                                  if (_selectedCurrency != null) ...[
+                                    SizedBox(height: context.responsiveHeight(2)),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(_selectedCurrency!.flag, style: TextStyle(fontSize: 24)),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  _selectedCurrency!.name,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    color: AppTheme.getTextPrimaryColor(context),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Symbol: ${_selectedCurrency!.symbol}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: AppTheme.getTextSecondaryColor(context),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+
+                      // Exchange Rates Section
+                      _SettingsGroup(
+                        title: 'Exchange Rates',
+                        children: [
+                          Container(
+                            padding: context.responsivePadding,
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Latest Rates',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.getTextPrimaryColor(context),
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: _isRefreshingRates ? null : _refreshRates,
+                                      icon: _isRefreshingRates
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                          : Icon(Icons.refresh, size: 16, color: AppTheme.getTextSecondaryColor(context)),
+                                      label: Text(_isRefreshingRates ? 'Updating...' : 'Refresh'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppTheme.getTextSecondaryColor(context),
+                                        textStyle: TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_lastUpdated != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Last updated: $_lastUpdated',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.getTextSecondaryColor(context),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Exchange rates are automatically fetched and cached for offline use.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.getTextSecondaryColor(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
+
+              const SizedBox(height: 24),
+
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(color: AppTheme.getBorderColor(context)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: AppTheme.getTextSecondaryColor(context),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _PrimaryButton(
+                      label: 'Save',
+                      onPressed: _saveCurrency,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 80),
             ],
           ),
         ),
       ),
     );
   }
-
-  Future<void> _saveFxRates() async {
-    final ok = _formKey.currentState?.saveAndValidate() ?? false;
-    if (!ok) return;
-
-    final v = _formKey.currentState!.value;
-    final rates = FxRates(
-      baseCurrency: v['baseCurrency'],
-      rates: {
-        'EUR': double.tryParse(v['eurRate'] ?? '0') ?? 0.0,
-        'GBP': double.tryParse(v['gbpRate'] ?? '0') ?? 0.0,
-      },
-    );
-
-    await widget.repository.saveFxRates(rates);
-    
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Exchange rates updated'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
 }
+
 
 class _SheetInputField extends StatelessWidget {
   final String name;
   final String label;
   final String? initialValue;
+  final String? placeholder;
   final FormFieldValidator<String>? validator;
   final TextInputType? keyboardType;
   final int maxLines;
@@ -953,6 +1452,7 @@ class _SheetInputField extends StatelessWidget {
     required this.name,
     required this.label,
     this.initialValue,
+    this.placeholder,
     this.validator,
     this.keyboardType,
     this.maxLines = 1,
@@ -964,26 +1464,272 @@ class _SheetInputField extends StatelessWidget {
       name: name,
       initialValue: initialValue,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: label.isEmpty ? null : label,
+        hintText: placeholder,
+        hintStyle: TextStyle(
+          color: AppTheme.getTextSecondaryColor(context).withValues(alpha: 0.6),
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E5E7)),
+          borderSide: BorderSide(color: AppTheme.getBorderColor(context)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E5E7)),
+          borderSide: BorderSide(color: AppTheme.getBorderColor(context)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF6366F1), width: 2),
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: const Color(0xFFF5F5F7),
+        fillColor: AppTheme.getBackgroundColor(context),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
       validator: validator,
       keyboardType: keyboardType,
       maxLines: maxLines,
+    );
+  }
+}
+
+class _AboutSheet extends StatelessWidget {
+  const _AboutSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.getBorderColor(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'About',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // About Content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // App Information Section
+                      _SettingsGroup(
+                        title: 'App Information',
+                        children: [
+                          _SettingItem(
+                            icon: Icons.person_outline,
+                            title: 'Developer',
+                            subtitle: 'Hashim Hameem',
+                            onTap: () {},
+                          ),
+                          _SettingItem(
+                            icon: Icons.info_outline,
+                            title: 'Version',
+                            subtitle: '1.0.0',
+                            onTap: () {},
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HelpSheet extends StatelessWidget {
+  const _HelpSheet();
+
+  Future<void> _launchEmail(BuildContext context) async {
+    const String email = 'scnz141@gmail.com';
+    const String subject = 'Invoice App Support';
+    const String body = 'Hi Hashim,\n\nI need help with the Invoice App...\n\n';
+
+    try {
+      // Create the mailto URI
+      final Uri emailUri = Uri(
+        scheme: 'mailto',
+        path: email,
+        queryParameters: {
+          'subject': subject,
+          'body': body,
+        },
+      );
+
+      // Try to launch the email URI with error handling
+      try {
+        if (await launcher.canLaunchUrl(emailUri)) {
+          await launcher.launchUrl(emailUri, mode: launcher.LaunchMode.externalApplication);
+          return;
+        }
+      } catch (e) {
+        // If mailto fails, continue to fallback
+        debugPrint('Mailto launch failed: $e');
+      }
+
+      // Fallback: Try Gmail web interface
+      try {
+        final Uri gmailUri = Uri.parse('https://mail.google.com/mail/?view=cm&to=$email&su=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');
+        if (await launcher.canLaunchUrl(gmailUri)) {
+          await launcher.launchUrl(gmailUri, mode: launcher.LaunchMode.externalApplication);
+          return;
+        }
+      } catch (e) {
+        // If Gmail web fails, continue to clipboard fallback
+        debugPrint('Gmail web launch failed: $e');
+      }
+
+      // Final fallback: Copy email to clipboard
+      await Clipboard.setData(const ClipboardData(text: email));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email address copied to clipboard: scnz141@gmail.com'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // Last resort: Show manual email instruction
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please email scnz141@gmail.com manually'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.getBorderColor(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Help & Support',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.getTextPrimaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Help Content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // Contact Support Section
+                      _SettingsGroup(
+                        title: 'Contact Support',
+                        children: [
+                          _SettingItem(
+                            icon: Icons.email_outlined,
+                            title: 'Email Support',
+                            subtitle: 'scnz141@gmail.com',
+                            onTap: () => _launchEmail(context),
+                          ),
+                          _SettingItem(
+                            icon: Icons.access_time_outlined,
+                            title: 'Response Time',
+                            subtitle: 'Usually within 24 hours',
+                            onTap: () {},
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

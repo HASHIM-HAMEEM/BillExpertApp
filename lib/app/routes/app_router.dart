@@ -4,6 +4,8 @@ import 'package:hive/hive.dart';
 
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/invoice/invoices_screen.dart';
+import '../../features/invoice/invoice_detail_screen.dart';
+import '../../features/invoice/invoice_wizard_sheet.dart';
 import '../../features/clients/clients_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/settings/settings_screen.dart';
@@ -59,6 +61,39 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ]),
         ],
+      ),
+
+      // Invoice Creation Flow - Full screen routes
+      GoRoute(
+        path: '/invoice/create',
+        name: 'invoice_create',
+        builder: (context, state) => const InvoiceCreationScreen(),
+      ),
+      GoRoute(
+        path: '/invoice/items',
+        name: 'invoice_items',
+        builder: (context, state) => const InvoiceItemsScreen(),
+      ),
+      GoRoute(
+        path: '/invoice/review',
+        name: 'invoice_review',
+        builder: (context, state) => const InvoiceReviewScreen(),
+      ),
+      GoRoute(
+        path: '/invoice/edit/:id',
+        name: 'invoice_edit',
+        builder: (context, state) {
+          final invoiceId = state.pathParameters['id']!;
+          return InvoiceCreationScreen(existingId: invoiceId);
+        },
+      ),
+      GoRoute(
+        path: '/invoice/:id',
+        name: 'invoice_detail',
+        builder: (context, state) {
+          final invoiceId = state.pathParameters['id']!;
+          return InvoiceDetailRouteScreen(invoiceId: invoiceId);
+        },
       ),
     ],
   );

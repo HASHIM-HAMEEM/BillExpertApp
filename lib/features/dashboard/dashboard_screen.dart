@@ -2,12 +2,103 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import 'package:go_router/go_router.dart';
+import '../../app/themes/app_theme.dart';
 import '../../core/services/invoice_repository.dart';
 import '../../core/services/merchant_repository.dart';
-import '../../core/services/fx_rates_repository.dart';
+import '../../core/services/currency_service.dart';
+import '../../core/services/currency_cache_service.dart';
 import '../../core/models/invoice.dart';
-import '../../core/models/fx_rates.dart';
-import '../invoice/invoice_wizard_sheet.dart';
+import '../../core/utils/currency_formatter.dart';
+import '../../core/utils/responsive_utils.dart';
+import '../../core/widgets/enhanced_ad_widget.dart';
+
+// Shared widgets from settings page design
+class _SettingsGroup extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+
+  const _SettingsGroup({
+    required this.title,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.getTextPrimaryColor(context),
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.getCardSurfaceColor(context),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.getBorderColor(context)),
+          ),
+          child: Column(
+            children: children.asMap().entries.map((entry) {
+              final index = entry.key;
+              final child = entry.value;
+              return Column(
+                children: [
+                  child,
+                  if (index < children.length - 1)
+                    Divider(
+                      height: 1,
+                      indent: 52,
+                      color: AppTheme.getBorderColor(context),
+                    ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _PrimaryButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -38,35 +129,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   @override
   Widget build(BuildContext context) {
     final invStream = ref.watch(invoiceRepositoryProvider).watchAll();
-    final fxRepo = ref.watch(fxRatesRepositoryProvider);
+    final currencyCacheService = ref.watch(currencyCacheServiceProvider);
+    final currencyService = ref.watch(currencyServiceProvider);
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // iOS-style background
+      backgroundColor: AppTheme.getBackgroundColor(context), // iOS-style background
       body: SafeArea(
-        child: FutureBuilder<FxRates?>(
-          future: fxRepo.getFxRates(),
-          builder: (context, fxSnapshot) {
-            final fxRates = fxSnapshot.data;
-            return StreamBuilder<List<Invoice>>(
-              stream: invStream,
-              builder: (context, snapshot) {
-                final invoices = snapshot.data ?? const <Invoice>[];
+        child: StreamBuilder<List<Invoice>>(
+          stream: invStream,
+          builder: (context, snapshot) {
+            final invoices = snapshot.data ?? const <Invoice>[];
 
-                // Convert all amounts to base currency for dashboard totals
-                double convertToBase(double amount, String? currency) {
-                  if (fxRates == null || currency == null || currency == fxRates.baseCurrency) {
-                    return amount;
-                  }
-                  final rate = fxRates.rates[currency];
-                  return rate != null ? amount / rate : amount;
-                }
+            // Convert all amounts to the user's display currency
+            final displayCurrencyAsync = ref.watch(displayCurrencyFutureProvider);
+            // Fallback while loading
+            final displayCurrency = displayCurrencyAsync.asData?.value ?? 'USD';
 
-                final revenue = invoices.where((i) => i.status == InvoiceStatus.paid).fold<double>(0, (s, i) => s + convertToBase(i.totalAmount, i.currencyCode));
-                final pending = invoices.where((i) => i.status == InvoiceStatus.unpaid || i.status == InvoiceStatus.partiallyPaid).fold<double>(0, (s, i) => s + convertToBase(i.totalAmount, i.currencyCode));
-                final overdue = invoices.where((i) => i.status == InvoiceStatus.overdue).fold<double>(0, (s, i) => s + convertToBase(i.totalAmount, i.currencyCode));
+            // Use optimized batch conversion for better performance
+            return FutureBuilder<Map<InvoiceStatus, double>>(
+              future: currencyCacheService.getStatusSums(invoices, displayCurrency),
+              builder: (context, statusSumsSnapshot) {
+                final statusSums = statusSumsSnapshot.data ?? {};
                 final totalInvoices = invoices.length;
-
-                final baseCurrency = fxRates?.baseCurrency ?? 'USD';
+                final baseCurrency = displayCurrency;
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -80,63 +165,227 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         child: _HeaderSection(),
                       ),
 
-                      const SizedBox(height: 24),
+                      SizedBox(height: context.responsiveHeight(3)),
 
-                      // Main Stats Card
+                      // Revenue Stats
                       _AnimatedSection(
                         delay: 100,
                         animationController: _animationController,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: _MainStatsCard(
-                            revenue: revenue,
-                            totalInvoices: totalInvoices,
-                            baseCurrency: baseCurrency,
+                          padding: context.responsiveHorizontalPadding,
+                          child: _SettingsGroup(
+                            title: 'Revenue Overview',
+                            children: [
+                              Container(
+                                padding: context.responsivePadding,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.trending_up_rounded,
+                                          color: AppTheme.getTextSecondaryColor(context),
+                                          size: context.responsiveIconSize(),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.getBackgroundColor(context),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            'This Month',
+                                            style: TextStyle(
+                                              color: AppTheme.getTextSecondaryColor(context),
+                                              fontSize: context.responsiveFontSize(13),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: context.responsiveHeight(3)),
+                                    Text(
+                                      'Total Revenue',
+                                      style: TextStyle(
+                                        color: AppTheme.getTextSecondaryColor(context),
+                                        fontSize: context.responsiveFontSize(16),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Builder(
+                                      builder: (context) {
+                                        final value = statusSums[InvoiceStatus.paid] ?? 0;
+                                        final text = value.formatAsCurrency(baseCurrency);
+                                        return Text(
+                                          text,
+                                          style: TextStyle(
+                                            color: AppTheme.getTextPrimaryColor(context),
+                                            fontSize: context.responsiveFontSize(36),
+                                            fontWeight: FontWeight.w800,
+                                            height: 1.1,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.arrow_upward_rounded,
+                                                color: Colors.green,
+                                                size: 14,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '12.5%',
+                                                style: TextStyle(
+                                                  color: Colors.green,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Text(
+                                          '$totalInvoices ${totalInvoices == 1 ? 'Invoice' : 'Invoices'}',
+                                          style: TextStyle(
+                                            color: AppTheme.getTextSecondaryColor(context),
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
 
-                      const SizedBox(height: 24),
+                      SizedBox(height: context.responsiveHeight(3)),
 
-                      // Quick Stats Grid
+                      // Quick Stats
                       _AnimatedSection(
                         delay: 200,
                         animationController: _animationController,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: _QuickStatsGrid(
-                            pending: pending,
-                            overdue: overdue,
-                            baseCurrency: baseCurrency,
+                          padding: context.responsiveHorizontalPadding,
+                          child: _SettingsGroup(
+                            title: 'Outstanding',
+                            children: [
+                              Container(
+                                padding: context.responsivePadding,
+        child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Builder(
+                                        builder: (context) {
+                                          final pendingAmt = statusSums[InvoiceStatus.unpaid] ?? 0;
+                                          final partialAmt = statusSums[InvoiceStatus.partiallyPaid] ?? 0;
+                                          final totalPending = pendingAmt + partialAmt;
+                                          return _StatCard(
+                                            title: 'Pending',
+                                            amount: totalPending,
+                                            currency: baseCurrency,
+                                            currencyService: currencyService,
+                                            icon: Icons.schedule_rounded,
+                                            color: InvoiceStatusColors.getColor(InvoiceStatus.unpaid),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Builder(
+                                        builder: (context) {
+                                          final overdueAmt = statusSums[InvoiceStatus.overdue] ?? 0;
+                                          return _StatCard(
+                                            title: 'Overdue',
+                                            amount: overdueAmt,
+                                            currency: baseCurrency,
+                                            currencyService: currencyService,
+                                            icon: Icons.error_outline_rounded,
+                                            color: InvoiceStatusColors.getColor(InvoiceStatus.overdue),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
 
-                      const SizedBox(height: 24),
+                      SizedBox(height: context.responsiveHeight(3)),
 
                       // Quick Actions
                       _AnimatedSection(
                         delay: 300,
                         animationController: _animationController,
-                        child: _QuickActionsSection(),
+                        child: Padding(
+                          padding: context.responsiveHorizontalPadding,
+                          child: _SettingsGroup(
+                            title: 'Quick Actions',
+                            children: [
+                              _ActionItem(
+                                icon: Icons.person_add_rounded,
+                                title: 'Add Client',
+                                subtitle: 'Add a new client',
+                                onTap: () => context.go('/clients'),
+                              ),
+                              _ActionItem(
+                                icon: Icons.bar_chart_rounded,
+                                title: 'View Reports',
+                                subtitle: 'Check your financial reports',
+                                onTap: () => context.go('/invoices'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
 
-                      const SizedBox(height: 24),
+                      SizedBox(height: context.responsiveHeight(3)),
 
                       // Recent Invoices
                       if (invoices.isNotEmpty) ...[
                         _AnimatedSection(
                           delay: 400,
                           animationController: _animationController,
-                          child: _RecentInvoicesSection(invoices: invoices.take(3).toList()),
+                          child: Padding(
+                            padding: context.responsiveHorizontalPadding,
+                            child: _SettingsGroup(
+                              title: 'Recent Invoices',
+                              children: invoices.take(3).map((invoice) => _InvoiceItem(invoice: invoice)).toList(),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 100), // Extra space for navigation
+                        SizedBox(height: context.responsiveHeight(12)), // Extra space for navigation
                       ] else ...[
                         _AnimatedSection(
                           delay: 400,
                           animationController: _animationController,
                           child: _EmptyState(),
                         ),
+                        const EnhancedBannerAdWidget(showInEmptyState: true),
                         const SizedBox(height: 100),
                       ],
                     ],
@@ -192,6 +441,29 @@ class _AnimatedSection extends StatelessWidget {
 }
 
 class _HeaderSection extends ConsumerWidget {
+  /// Returns appropriate greeting based on current time
+  ///
+  /// Returns:
+  /// - 'Good morning' for hours 0-11
+  /// - 'Good afternoon' for hours 12-16
+  /// - 'Good evening' for hours 17-23
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+
+    // Morning: 12 AM to 11:59 AM
+    if (hour >= 0 && hour < 12) {
+      return 'Good morning';
+    }
+
+    // Afternoon: 12 PM to 4:59 PM
+    if (hour >= 12 && hour < 17) {
+      return 'Good afternoon';
+    }
+
+    // Evening: 5 PM to 11:59 PM
+    return 'Good evening';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
@@ -207,16 +479,17 @@ class _HeaderSection extends ConsumerWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-              ),
+              color: AppTheme.getCardSurfaceColor(context),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.getBorderColor(context),
+              ),
             ),
             child: Center(
               child: Text(
                 name.isNotEmpty ? name.trim().split(' ').map((e) => e[0]).take(2).join() : 'B',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppTheme.getTextSecondaryColor(context),
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
@@ -248,41 +521,22 @@ class _HeaderSection extends ConsumerWidget {
                   children: [
                     Text(
                       _getGreeting(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        color: Color(0xFF8E8E93),
+                        color: AppTheme.getTextSecondaryColor(context),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
-                        color: Colors.black,
+                        color: AppTheme.getTextPrimaryColor(context),
                       ),
                     ),
                   ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.notifications_outlined,
-                  color: Color(0xFF8E8E93),
-                  size: 24,
                 ),
               ),
             ],
@@ -291,218 +545,35 @@ class _HeaderSection extends ConsumerWidget {
       ),
     );
   }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
-}
-
-class _MainStatsCard extends StatelessWidget {
-  final double revenue;
-  final int totalInvoices;
-  final String baseCurrency;
-
-  const _MainStatsCard({
-    required this.revenue,
-    required this.totalInvoices,
-    required this.baseCurrency,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.trending_up_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'This Month',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Total Revenue',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$baseCurrency ${revenue.toStringAsFixed(0)}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.arrow_upward_rounded,
-                      color: Colors.greenAccent[100],
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '12.5%',
-                      style: TextStyle(
-                        color: Colors.greenAccent[100],
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                '$totalInvoices ${totalInvoices == 1 ? 'Invoice' : 'Invoices'}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickStatsGrid extends StatelessWidget {
-  final double pending;
-  final double overdue;
-  final String baseCurrency;
-
-  const _QuickStatsGrid({
-    required this.pending,
-    required this.overdue,
-    required this.baseCurrency,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            title: 'Pending',
-            value: pending.toStringAsFixed(0),
-            currency: baseCurrency,
-            icon: Icons.schedule_rounded,
-            color: const Color(0xFFF59E0B),
-            backgroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _StatCard(
-            title: 'Overdue',
-            value: overdue.toStringAsFixed(0),
-            currency: baseCurrency,
-            icon: Icons.error_outline_rounded,
-            color: const Color(0xFFEF4444),
-            backgroundColor: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _StatCard extends StatelessWidget {
   final String title;
-  final String value;
+  final double amount;
   final String currency;
+  final CurrencyService currencyService;
   final IconData icon;
   final Color color;
-  final Color backgroundColor;
 
   const _StatCard({
     required this.title,
-    required this.value,
+    required this.amount,
     required this.currency,
+    required this.currencyService,
     required this.icon,
     required this.color,
-    required this.backgroundColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppTheme.getCardSurfaceColor(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.getBorderColor(context),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,23 +590,53 @@ class _StatCard extends StatelessWidget {
               size: 20,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xFF8E8E93),
+            style: TextStyle(
+              fontSize: 14,
+              color: AppTheme.getTextSecondaryColor(context),
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            '$currency $value',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
+          Consumer(
+            builder: (context, ref, child) {
+              final displayCurrencyAsync = ref.watch(displayCurrencyFutureProvider);
+              return displayCurrencyAsync.when(
+                data: (displayCurrency) => FutureBuilder<String>(
+                  key: ValueKey('stat-$displayCurrency'),
+                  future: currencyService.convertAmount(amount, currency),
+                  builder: (context, snapshot) {
+                    final displayAmount = snapshot.data ?? '$currency ${amount.toStringAsFixed(0)}';
+                    return Text(
+                      displayAmount,
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(18),
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.getTextPrimaryColor(context),
+                      ),
+                    );
+                  },
+                ),
+                loading: () => Text(
+                  amount.formatAsCurrency(currency),
+                  style: TextStyle(
+                    fontSize: context.responsiveFontSize(18),
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.getTextPrimaryColor(context),
+                  ),
+                ),
+                error: (error, stack) => Text(
+                  amount.formatAsCurrency(currency),
+                  style: TextStyle(
+                    fontSize: context.responsiveFontSize(18),
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.getTextPrimaryColor(context),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -543,72 +644,6 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _QuickActionsSection extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _ActionItem(
-                  icon: Icons.receipt_long_rounded,
-                  title: 'Create Invoice',
-                  subtitle: 'Generate a new invoice',
-                  onTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => const InvoiceWizardSheet(),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 60, color: Color(0xFFE5E5E7)),
-                _ActionItem(
-                  icon: Icons.person_add_rounded,
-                  title: 'Add Client',
-                  subtitle: 'Add a new client',
-                  onTap: () => context.go('/clients'),
-                ),
-                const Divider(height: 1, indent: 60, color: Color(0xFFE5E5E7)),
-                _ActionItem(
-                  icon: Icons.bar_chart_rounded,
-                  title: 'View Reports',
-                  subtitle: 'Check your financial reports',
-                  onTap: () => context.go('/invoices'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ActionItem extends StatelessWidget {
   final IconData icon;
@@ -631,49 +666,42 @@ class _ActionItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: context.responsivePadding,
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF6366F1),
-                  size: 20,
-                ),
+              Icon(
+                icon,
+                size: context.responsiveIconSize(),
+                color: AppTheme.getTextSecondaryColor(context),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: context.responsiveWidth(4)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 17,
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(17),
                         fontWeight: FontWeight.w600,
-                        color: Colors.black,
+                        color: AppTheme.getTextPrimaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF8E8E93),
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(15),
+                        color: AppTheme.getTextSecondaryColor(context),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
-                color: Color(0xFF8E8E93),
-                size: 20,
+                color: AppTheme.getTextSecondaryColor(context),
+                size: context.responsiveIconSize(mobile: 18, tablet: 20, desktop: 22),
               ),
             ],
           ),
@@ -683,78 +711,6 @@ class _ActionItem extends StatelessWidget {
   }
 }
 
-class _RecentInvoicesSection extends StatelessWidget {
-  final List<Invoice> invoices;
-
-  const _RecentInvoicesSection({required this.invoices});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Recent Invoices',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
-              ),
-              TextButton(
-                onPressed: () => context.go('/invoices'),
-                child: const Text(
-                  'See All',
-                  style: TextStyle(
-                    fontSize: 17,
-                    color: Color(0xFF6366F1),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: invoices.asMap().entries.map((entry) {
-                final index = entry.key;
-                final invoice = entry.value;
-                return Column(
-                  children: [
-                    _InvoiceItem(invoice: invoice),
-                    if (index < invoices.length - 1)
-                      const Divider(
-                        height: 1,
-                        indent: 60,
-                        color: Color(0xFFE5E5E7),
-                      ),
-                  ],
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _InvoiceItem extends StatelessWidget {
   final Invoice invoice;
@@ -763,42 +719,45 @@ class _InvoiceItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
+    return InkWell(
+      onTap: () => context.go('/invoice/${invoice.id}'),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: context.responsivePadding,
+        child: Row(
+          children: [
           Container(
-            width: 40,
-            height: 40,
+            width: context.responsiveIconSize(mobile: 36, tablet: 40, desktop: 44),
+            height: context.responsiveIconSize(mobile: 36, tablet: 40, desktop: 44),
             decoration: BoxDecoration(
               color: _getStatusColor(invoice.status).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
             ),
             child: Icon(
               Icons.receipt_long_rounded,
               color: _getStatusColor(invoice.status),
-              size: 20,
+              size: context.responsiveIconSize(mobile: 18, tablet: 20, desktop: 22),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: context.responsiveWidth(3)),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   invoice.invoiceNumber,
-                  style: const TextStyle(
-                    fontSize: 17,
+                  style: TextStyle(
+                    fontSize: context.responsiveFontSize(17),
                     fontWeight: FontWeight.w600,
-                    color: Colors.black,
+                    color: AppTheme.getTextPrimaryColor(context),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   invoice.client.name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF8E8E93),
+                  style: TextStyle(
+                    fontSize: context.responsiveFontSize(15),
+                    color: AppTheme.getTextSecondaryColor(context),
                   ),
                 ),
               ],
@@ -808,35 +767,25 @@ class _InvoiceItem extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${invoice.currencyCode ?? 'USD'} ${invoice.totalAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 17,
+                invoice.totalAmount.formatAsCurrency(invoice.currencyCode ?? 'USD'),
+                style: TextStyle(
+                  fontSize: context.responsiveFontSize(17),
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: AppTheme.getTextPrimaryColor(context),
                 ),
               ),
               const SizedBox(height: 4),
               _StatusChip(status: invoice.status),
             ],
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Color _getStatusColor(InvoiceStatus status) {
-    switch (status) {
-      case InvoiceStatus.paid:
-        return const Color(0xFF10B981);
-      case InvoiceStatus.unpaid:
-        return const Color(0xFFF59E0B);
-      case InvoiceStatus.partiallyPaid:
-        return const Color(0xFF6366F1);
-      case InvoiceStatus.overdue:
-        return const Color(0xFFEF4444);
-      case InvoiceStatus.draft:
-        return const Color(0xFF6B7280);
-    }
+  static Color _getStatusColor(InvoiceStatus status) {
+    return InvoiceStatusColors.getColor(status);
   }
 }
 
@@ -847,29 +796,21 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bg;
-    Color fg;
+    final statusColor = InvoiceStatusColors.getColor(status);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = statusColor.withValues(alpha: isDark ? 0.2 : 0.1);
+    final fg = statusColor;
     String label;
     switch (status) {
       case InvoiceStatus.paid:
-        bg = const Color(0xFFD1FAE5);
-        fg = const Color(0xFF10B981);
         label = 'Paid';
       case InvoiceStatus.unpaid:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFF59E0B);
         label = 'Unpaid';
       case InvoiceStatus.partiallyPaid:
-        bg = const Color(0xFFE0E7FF);
-        fg = const Color(0xFF6366F1);
         label = 'Partial';
       case InvoiceStatus.overdue:
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFEF4444);
         label = 'Overdue';
       case InvoiceStatus.draft:
-        bg = const Color(0xFFE5E7EB);
-        fg = const Color(0xFF6B7280);
         label = 'Draft';
     }
     return Container(
@@ -898,60 +839,45 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(24),
+              color: AppTheme.getCardSurfaceColor(context),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.getBorderColor(context),
+              ),
             ),
-            child: const Icon(
-              Icons.receipt_long_outlined,
-              size: 64,
-              color: Color(0xFF6366F1),
+            child: Image.asset(
+              'assets/logo/applogo.png',
+              width: 48,
+              height: 48,
+              color: AppTheme.getTextSecondaryColor(context),
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Welcome to your dashboard!',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: AppTheme.getTextPrimaryColor(context),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Create your first invoice to see your business metrics here',
             style: TextStyle(
               fontSize: 17,
-              color: Color(0xFF8E8E93),
+              color: AppTheme.getTextSecondaryColor(context),
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const InvoiceWizardSheet(),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 0,
-            ),
-            child: const Text(
-              'Create Your First Invoice',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
+          SizedBox(
+            width: double.infinity,
+            child: _PrimaryButton(
+              label: 'Create Your First Invoice',
+            onPressed: () => context.go('/invoice/create'),
             ),
           ),
         ],

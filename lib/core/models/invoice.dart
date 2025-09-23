@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'client.dart';
 
@@ -116,6 +117,23 @@ class Invoice extends HiveObject {
   double get taxableTotal => items.fold(0, (sum, i) => sum + i.taxable);
   double get taxAmount => items.fold(0, (sum, i) => sum + i.taxAmount);
   double get totalAmount => items.fold(0, (sum, i) => sum + i.lineTotal);
+}
+
+class InvoiceStatusColors {
+  static Color getColor(InvoiceStatus status) {
+    switch (status) {
+      case InvoiceStatus.paid:
+        return const Color(0xFF10B981); // Green
+      case InvoiceStatus.unpaid:
+        return const Color(0xFFF59E0B); // Orange
+      case InvoiceStatus.partiallyPaid:
+        return const Color(0xFF6366F1); // Blue
+      case InvoiceStatus.overdue:
+        return const Color(0xFFEF4444); // Red
+      case InvoiceStatus.draft:
+        return const Color(0xFF6B7280); // Gray
+    }
+  }
 }
 
 

@@ -46,6 +46,9 @@ class MerchantProfile {
   @HiveField(13)
   final int? defaultDueDays;
 
+  @HiveField(14)
+  final String? displayCurrencyCode; // User's preferred display currency
+
   const MerchantProfile({
     required this.businessName,
     this.logoPath,
@@ -58,6 +61,7 @@ class MerchantProfile {
     this.invoicePrefix = 'INV',
     this.nextInvoiceNumber = 1,
     this.currencyCode = 'USD',
+    this.displayCurrencyCode = 'USD',
     this.defaultTerms,
     this.defaultNotes,
     this.defaultDueDays,
@@ -75,6 +79,7 @@ class MerchantProfile {
     String? invoicePrefix,
     int? nextInvoiceNumber,
     String? currencyCode,
+    String? displayCurrencyCode,
     String? defaultTerms,
     String? defaultNotes,
     int? defaultDueDays,
@@ -91,6 +96,7 @@ class MerchantProfile {
       invoicePrefix: invoicePrefix ?? this.invoicePrefix,
       nextInvoiceNumber: nextInvoiceNumber ?? this.nextInvoiceNumber,
       currencyCode: currencyCode ?? this.currencyCode,
+      displayCurrencyCode: displayCurrencyCode ?? this.displayCurrencyCode,
       defaultTerms: defaultTerms ?? this.defaultTerms,
       defaultNotes: defaultNotes ?? this.defaultNotes,
       defaultDueDays: defaultDueDays ?? this.defaultDueDays,

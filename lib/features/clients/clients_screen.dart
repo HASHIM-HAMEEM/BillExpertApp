@@ -2,27 +2,189 @@ import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
-import 'package:uuid/uuid.dart';
+import 'dart:math';
 
+import '../../app/themes/app_theme.dart';
 import '../../core/services/client_repository.dart';
 import '../../core/models/client.dart';
+import '../../core/utils/responsive_utils.dart';
+import '../../core/widgets/enhanced_ad_widget.dart';
+
+// Shared widgets from settings page design
+class _SettingsGroup extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+
+  const _SettingsGroup({
+    required this.title,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: context.responsiveWidth(4), bottom: context.responsiveHeight(1)),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: context.responsiveFontSize(22),
+              fontWeight: FontWeight.w700,
+              color: AppTheme.getTextPrimaryColor(context),
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.getCardSurfaceColor(context),
+            borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
+            border: Border.all(color: AppTheme.getBorderColor(context)),
+          ),
+          child: Column(
+            children: children.asMap().entries.map((entry) {
+              final index = entry.key;
+              final child = entry.value;
+              return Column(
+                children: [
+                  child,
+                  if (index < children.length - 1)
+                    Divider(
+                      height: 1,
+                      indent: 52,
+                      color: AppTheme.getDividerColor(context),
+                    ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _PrimaryButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(vertical: context.responsiveHeight(1.5)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
+          ),
+          elevation: 0,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: context.responsiveFontSize(17),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetInputField extends StatelessWidget {
+  final String name;
+  final String label;
+  final String? initialValue;
+  final FormFieldValidator<String>? validator;
+  final TextInputType? keyboardType;
+  final int maxLines;
+
+  const _SheetInputField({
+    required this.name,
+    required this.label,
+    this.initialValue,
+    this.validator,
+    this.keyboardType,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FormBuilderTextField(
+      name: name,
+      initialValue: initialValue,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppTheme.getBorderColor(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppTheme.getBorderColor(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppTheme.getTextPrimaryColor(context), width: 2),
+        ),
+        filled: true,
+        fillColor: AppTheme.getBackgroundColor(context),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+      validator: validator,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+    );
+  }
+}
 
 class ClientsScreen extends ConsumerWidget {
   const ClientsScreen({super.key});
+
+  List<Widget> _buildClientListWithAds(BuildContext context, List<Client> clients, ClientRepository repo) {
+    final List<Widget> widgets = [];
+    const int adInterval = 3; // Show ad after every 3 clients
+
+    for (int i = 0; i < clients.length; i++) {
+      // Add client item
+      widgets.add(
+        _ClientItem(
+          client: clients[i],
+          onEdit: () => _showClientForm(context, repo, existing: clients[i]),
+          onDelete: () => _showDeleteDialog(context, clients[i], repo),
+        ),
+      );
+
+      // Add native ad after every adInterval clients (but not after the last one)
+      if ((i + 1) % adInterval == 0 && i < clients.length - 1) {
+        widgets.add(const AdSeparator());
+        widgets.add(const EnhancedNativeAdWidget());
+      }
+    }
+
+    return widgets;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(clientRepositoryProvider);
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // iOS-style background
+      backgroundColor: AppTheme.getBackgroundColor(context), // iOS-style background
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Clients',
           style: TextStyle(
-            fontSize: 17,
+            fontSize: context.responsiveFontSize(17),
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.getTextPrimaryColor(context),
           ),
         ),
         backgroundColor: Colors.transparent,
@@ -30,10 +192,6 @@ class ClientsScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -41,15 +199,15 @@ class ClientsScreen extends ConsumerWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
+                color: AppTheme.getTextPrimaryColor(context),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: IconButton(
                 padding: EdgeInsets.zero,
                 onPressed: () => _showClientForm(context, repo),
-                icon: const Icon(
+                icon: Icon(
                   Icons.add,
-                  color: Colors.white,
+                  color: AppTheme.getCardSurfaceColor(context),
                   size: 18,
                 ),
               ),
@@ -61,36 +219,35 @@ class ClientsScreen extends ConsumerWidget {
         stream: repo.watchAll(),
         builder: (context, snapshot) {
           final clients = snapshot.data ?? const <Client>[];
-          
+
           if (clients.isEmpty) {
             return _EmptyState(
               onAddClient: () => _showClientForm(context, repo),
             );
           }
-          
+
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: context.responsivePadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Stats Banner
+                // Stats Card
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: context.responsivePadding,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                    color: AppTheme.getCardSurfaceColor(context),
+                    borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
+                    border: Border.all(
+                      color: AppTheme.getBorderColor(context),
                     ),
-                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.people_rounded,
-                        color: Colors.white,
-                        size: 28,
+                      Icon(
+                        Icons.people_outline_rounded,
+                        color: AppTheme.getTextSecondaryColor(context),
+                        size: 24,
                       ),
                       const SizedBox(width: 16),
                       Column(
@@ -98,18 +255,18 @@ class ClientsScreen extends ConsumerWidget {
                         children: [
                           Text(
                             '${clients.length}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
+                            style: TextStyle(
+                              color: AppTheme.getTextPrimaryColor(context),
+                              fontSize: 28,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           Text(
                             clients.length == 1 ? 'Client' : 'Clients',
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppTheme.getTextSecondaryColor(context),
                               fontSize: 15,
-                              fontWeight: FontWeight.w400,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -121,10 +278,9 @@ class ClientsScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 // Clients List
-                _ClientsGroup(
+                _SettingsGroup(
                   title: 'All Clients',
-                  clients: clients,
-                  repository: repo,
+                  children: _buildClientListWithAds(context, clients, repo),
                 ),
 
                 const SizedBox(height: 80),
@@ -132,13 +288,6 @@ class ClientsScreen extends ConsumerWidget {
             ),
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showClientForm(context, repo),
-        backgroundColor: const Color(0xFF6366F1),
-        foregroundColor: Colors.white,
-        elevation: 4,
-        child: const Icon(Icons.person_add_rounded),
       ),
     );
   }
@@ -148,158 +297,27 @@ class ClientsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _ClientFormSheet(
-        repository: repo,
-        existing: existing,
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final VoidCallback onAddClient;
-
-  const _EmptyState({required this.onAddClient});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(40),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Icon(
-              Icons.people_outline_rounded,
-              size: 64,
-              color: Color(0xFF6366F1),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'No clients yet',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Add your first client to start creating invoices',
-            style: TextStyle(
-              fontSize: 17,
-              color: Color(0xFF8E8E93),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: onAddClient,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 0,
-            ),
-            child: const Text(
-              'Add Your First Client',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ClientsGroup extends StatelessWidget {
-  final String title;
-  final List<Client> clients;
-  final ClientRepository repository;
-
-  const _ClientsGroup({
-    required this.title,
-    required this.clients,
-    required this.repository,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 8),
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
+      builder: (ctx) => AnimatedPadding(
+        padding: MediaQuery.of(ctx).viewInsets + const EdgeInsets.only(top: 12),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: FractionallySizedBox(
+          heightFactor: 0.92,
+          child: _ClientFormSheet(
+            repository: repo,
+            existing: existing,
           ),
         ),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: clients.asMap().entries.map((entry) {
-              final index = entry.key;
-              final client = entry.value;
-              return Column(
-                children: [
-                  _ClientItem(
-                    client: client,
-                    onEdit: () => _showClientForm(context, client),
-                    onDelete: () => _showDeleteDialog(context, client),
-                  ),
-                  if (index < clients.length - 1)
-                    const Divider(
-                      height: 1,
-                      indent: 68,
-                      color: Color(0xFFE5E5E7),
-                    ),
-                ],
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showClientForm(BuildContext context, Client? existing) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _ClientFormSheet(
-        repository: repository,
-        existing: existing,
       ),
     );
   }
 
-  void _showDeleteDialog(BuildContext context, Client client) {
+  void _showDeleteDialog(BuildContext context, Client client, ClientRepository repo) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Delete Client',
           style: TextStyle(
             fontSize: 20,
@@ -308,25 +326,49 @@ class _ClientsGroup extends StatelessWidget {
         ),
         content: Text(
           'Are you sure you want to delete ${client.name}?',
-          style: const TextStyle(fontSize: 17),
+          style: TextStyle(fontSize: 17),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(
                 fontSize: 17,
-                color: Color(0xFF6366F1),
+                color: AppTheme.getTextPrimaryColor(context),
               ),
             ),
           ),
           TextButton(
-            onPressed: () {
-              repository.delete(client.id);
-              Navigator.pop(ctx);
+            onPressed: () async {
+              try {
+                await repo.delete(client.id);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Client deleted successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to delete client: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              }
             },
-            child: const Text(
+            child: Text(
               'Delete',
               style: TextStyle(
                 fontSize: 17,
@@ -341,6 +383,67 @@ class _ClientsGroup extends StatelessWidget {
   }
 }
 
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAddClient;
+
+  const _EmptyState({required this.onAddClient});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.all(context.responsiveWidth(10)),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: EdgeInsets.all(context.responsiveWidth(6)),
+            decoration: BoxDecoration(
+              color: AppTheme.getCardSurfaceColor(context),
+              borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
+              border: Border.all(
+                color: AppTheme.getBorderColor(context),
+              ),
+            ),
+            child: Image.asset(
+              'assets/logo/applogo.png',
+              width: context.responsiveIconSize(mobile: 36, tablet: 48, desktop: 60),
+              height: context.responsiveIconSize(mobile: 36, tablet: 48, desktop: 60),
+              color: AppTheme.getTextSecondaryColor(context),
+            ),
+          ),
+          SizedBox(height: context.responsiveHeight(3)),
+          Text(
+            'No clients yet',
+            style: TextStyle(
+              fontSize: context.responsiveFontSize(24),
+              fontWeight: FontWeight.w700,
+              color: AppTheme.getTextPrimaryColor(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add your first client to start creating invoices',
+            style: TextStyle(
+              fontSize: context.responsiveFontSize(17),
+              color: AppTheme.getTextSecondaryColor(context),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: _PrimaryButton(
+              label: 'Add Your First Client',
+              onPressed: onAddClient,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
 class _ClientItem extends StatelessWidget {
   final Client client;
   final VoidCallback onEdit;
@@ -354,41 +457,24 @@ class _ClientItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = _getInitials(client.name);
-    
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onEdit,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(context.responsiveBorderRadius()),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: context.responsivePadding,
           child: Row(
             children: [
-              // Avatar
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    initials,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
+              // Icon
+              Icon(
+                Icons.person_outline_rounded,
+                size: context.responsiveIconSize(),
+                color: AppTheme.getTextSecondaryColor(context),
               ),
-              
-              const SizedBox(width: 12),
-              
+
+              SizedBox(width: context.responsiveWidth(4)),
+
               // Client info
               Expanded(
                 child: Column(
@@ -396,19 +482,19 @@ class _ClientItem extends StatelessWidget {
                   children: [
                     Text(
                       client.name,
-                      style: const TextStyle(
-                        fontSize: 17,
+                      style: TextStyle(
+                        fontSize: context.responsiveFontSize(17),
                         fontWeight: FontWeight.w600,
-                        color: Colors.black,
+                        color: AppTheme.getTextPrimaryColor(context),
                       ),
                     ),
                     if (client.company != null && client.company!.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
                         client.company!,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFF8E8E93),
+                        style: TextStyle(
+                          fontSize: context.responsiveFontSize(15),
+                          color: AppTheme.getTextSecondaryColor(context),
                         ),
                       ),
                     ],
@@ -416,9 +502,9 @@ class _ClientItem extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         client.email!,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFF8E8E93),
+                        style: TextStyle(
+                          fontSize: context.responsiveFontSize(15),
+                          color: AppTheme.getTextSecondaryColor(context),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -426,7 +512,7 @@ class _ClientItem extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               // More button
               PopupMenuButton<String>(
                 onSelected: (value) {
@@ -437,30 +523,30 @@ class _ClientItem extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.edit_rounded, size: 20),
+                        Icon(Icons.edit_rounded, size: 20, color: AppTheme.getTextSecondaryColor(context)),
                         SizedBox(width: 12),
                         Text('Edit'),
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+                        Icon(Icons.delete_forever_rounded, size: 20, color: const Color(0xFFEF4444)),
                         SizedBox(width: 12),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
+                        Text('Delete', style: TextStyle(color: const Color(0xFFEF4444))),
                       ],
                     ),
                   ),
                 ],
-                icon: const Icon(
+                icon: Icon(
                   Icons.more_horiz,
-                  color: Color(0xFF8E8E93),
+                  color: AppTheme.getTextSecondaryColor(context),
                   size: 20,
                 ),
               ),
@@ -469,15 +555,6 @@ class _ClientItem extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _getInitials(String name) {
-    if (name.isEmpty) return 'C';
-    final words = name.trim().split(' ');
-    if (words.length == 1) {
-      return words[0][0].toUpperCase();
-    }
-    return '${words[0][0]}${words[1][0]}'.toUpperCase();
   }
 }
 
@@ -495,16 +572,23 @@ class _ClientFormSheet extends StatefulWidget {
 }
 
 class _ClientFormSheetState extends State<_ClientFormSheet> {
+  // Simple ID generator to replace uuid package
+  String _generateId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random();
+    return String.fromCharCodes(Iterable.generate(
+        16, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
+  }
   final _formKey = GlobalKey<FormBuilderState>();
 
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existing != null;
-    
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8F9FA), // Matching HTML background
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)), // Matching HTML radius
+      decoration: BoxDecoration(
+        color: AppTheme.getCardSurfaceColor(context),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         top: false,
@@ -518,147 +602,123 @@ class _ClientFormSheetState extends State<_ClientFormSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header exactly like HTML
+              // Handle
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.getBorderColor(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Header
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  Text(
+                    isEditing ? 'Edit Client' : 'Add Client',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.getTextPrimaryColor(context),
+                    ),
+                  ),
                   IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios,
-                      color: Colors.black,
-                      size: 20,
-                    ),
+                    icon: Icon(Icons.close, color: AppTheme.getTextSecondaryColor(context), size: 24),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  Expanded(
-                    child: Text(
-                      isEditing ? 'Edit Client' : 'Add Client',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 48), // Balance the back button
                 ],
               ),
-              
               const SizedBox(height: 24),
 
-              // Form
+              // Form Content
               Flexible(
                 child: SingleChildScrollView(
-                  child: FormBuilder(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        // Client Information Section (matching HTML exactly)
-                        _FormSection(
-                          title: 'Client Information',
-                          subtitle: 'Enter basic client details',
-                          children: [
-                            _FormField(
-                              name: 'name',
-                              label: 'Full Name',
-                              icon: Icons.person_rounded,
-                              initialValue: widget.existing?.name,
-                              hintText: 'Enter client name',
-                              validator: FormBuilderValidators.required(),
-                              textInputAction: TextInputAction.next,
-                            ),
-                            _FormField(
-                              name: 'email',
-                              label: 'Email Address',
-                              icon: Icons.email_rounded,
-                              initialValue: widget.existing?.email,
-                              hintText: 'client@example.com',
-                              keyboardType: TextInputType.emailAddress,
-                              validator: FormBuilderValidators.email(),
-                              textInputAction: TextInputAction.next,
-                            ),
-                            _FormField(
-                              name: 'phone',
-                              label: 'Phone Number',
-                              icon: Icons.phone_rounded,
-                              initialValue: widget.existing?.phone,
-                              hintText: '+1 (555) 123-4567',
-                              keyboardType: TextInputType.phone,
-                              textInputAction: TextInputAction.next,
-                              isLast: true,
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // Business Details Section (matching HTML exactly)
-                        _FormSection(
-                          title: 'Business Details',
-                          subtitle: 'Optional business information',
-                          children: [
-                            _FormField(
-                              name: 'company',
-                              label: 'Company Name',
-                              icon: Icons.business_rounded,
-                              initialValue: widget.existing?.company,
-                              hintText: 'Enter company name',
-                              textInputAction: TextInputAction.next,
-                            ),
-                            _FormField(
-                              name: 'address',
-                              label: 'Address',
-                              icon: Icons.location_on_rounded,
-                              initialValue: widget.existing?.address,
-                              hintText: 'Enter full address',
-                              textInputAction: TextInputAction.done,
-                              isLast: true,
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 32),
-                        
-                        // Gradient Add Button (exactly like HTML)
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF6366F1), Color(0xFF8B7ED8)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _saveClient,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              shadowColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              isEditing ? 'Update Client' : 'Add Client',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                  child: Column(
+                    children: [
+                      // Client Information Section
+                      _SettingsGroup(
+                        title: 'Client Information',
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            child: FormBuilder(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  _SheetInputField(
+                                    name: 'name',
+                                    label: 'Full Name',
+                                    initialValue: widget.existing?.name,
+                                    validator: FormBuilderValidators.required(),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _SheetInputField(
+                                    name: 'email',
+                                    label: 'Email Address',
+                                    initialValue: widget.existing?.email,
+                                    keyboardType: TextInputType.emailAddress,
+                                    validator: FormBuilderValidators.email(),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _SheetInputField(
+                                    name: 'phone',
+                                    label: 'Phone Number',
+                                    initialValue: widget.existing?.phone,
+                                    keyboardType: TextInputType.phone,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Business Details Section
+                      _SettingsGroup(
+                        title: 'Business Details',
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                _SheetInputField(
+                                  name: 'company',
+                                  label: 'Company Name',
+                                  initialValue: widget.existing?.company,
+                                ),
+                                const SizedBox(height: 16),
+                                _SheetInputField(
+                                  name: 'address',
+                                  label: 'Address',
+                                  initialValue: widget.existing?.address,
+                                  maxLines: 3,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: _PrimaryButton(
+                          label: isEditing ? 'Update Client' : 'Add Client',
+                          onPressed: _saveClient,
                         ),
-                      ],
-                    ),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),
@@ -674,7 +734,7 @@ class _ClientFormSheetState extends State<_ClientFormSheet> {
     if (!ok) return;
 
     final v = _formKey.currentState!.value;
-    final id = widget.existing?.id ?? const Uuid().v4();
+    final id = widget.existing?.id ?? _generateId();
 
     final client = Client(
       id: id,
@@ -698,155 +758,5 @@ class _ClientFormSheetState extends State<_ClientFormSheet> {
         ),
       );
     }
-  }
-}
-
-// Form Section Widget (matching HTML structure)
-class _FormSection extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final List<Widget> children;
-
-  const _FormSection({
-    required this.title,
-    required this.subtitle,
-    required this.children,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 3,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Section Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF666666),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Form Fields
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-// Form Field Widget (matching HTML structure)
-class _FormField extends StatelessWidget {
-  final String name;
-  final String label;
-  final IconData icon;
-  final String? initialValue;
-  final String? hintText;
-  final FormFieldValidator<String>? validator;
-  final TextInputType? keyboardType;
-  final TextInputAction? textInputAction;
-  final bool isLast;
-
-  const _FormField({
-    required this.name,
-    required this.label,
-    required this.icon,
-    this.initialValue,
-    this.hintText,
-    this.validator,
-    this.keyboardType,
-    this.textInputAction,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: isLast ? null : const Border(
-          bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1),
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          // Icon (matching HTML purple color)
-          Container(
-            width: 24,
-            height: 24,
-            child: Icon(
-              icon,
-              color: const Color(0xFF6366F1),
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Field Content
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                FormBuilderTextField(
-                  name: name,
-                  initialValue: initialValue,
-                  decoration: InputDecoration(
-                    hintText: hintText,
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF9CA3AF),
-                      fontSize: 16,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.black,
-                  ),
-                  validator: validator,
-                  keyboardType: keyboardType,
-                  textInputAction: textInputAction,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

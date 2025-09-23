@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.invoice_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -20,8 +20,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.invoice_app"
+        // Production Application ID
+        applicationId = "com.hashimhameem.billexpert"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -32,10 +32,20 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Production signing - Update with production keystore for release
+            // Currently using debug keys for development builds
             signingConfig = signingConfigs.getByName("debug")
+
+            // Enable code shrinking and obfuscation for smaller APK size
+            isShrinkResources = true
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    // Prefer high refresh rate (120Hz+) where available
+    defaultConfig {
+        manifestPlaceholders["androidx.core.app.ActivityOptionsCompat.USE_HIGH_REFRESH_RATE"] = true
     }
 }
 
