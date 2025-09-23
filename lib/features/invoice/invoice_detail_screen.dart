@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 
 import '../../app/themes/app_theme.dart';
@@ -114,8 +115,11 @@ class InvoiceDetailScreen extends ConsumerWidget {
                 ? IconButton(
                     icon: Icon(Icons.arrow_back_ios, color: AppTheme.getTextPrimaryColor(context), size: 20),
                     onPressed: () {
+                      // Try to pop first, if it fails (no previous route), go to dashboard
                       if (Navigator.of(context).canPop()) {
-                        Navigator.of(context).maybePop();
+                        Navigator.of(context).pop();
+                      } else {
+                        context.go('/dashboard');
                       }
                     },
                   )
