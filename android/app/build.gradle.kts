@@ -5,6 +5,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+import java.util.Properties
+
+// Load keystore properties from file
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
+}
+
 android {
     namespace = "com.example.invoice_app"
     compileSdk = flutter.compileSdkVersion
@@ -30,11 +39,19 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as String?
+        }
+    }
+
     buildTypes {
         release {
-            // Production signing - Update with production keystore for release
-            // Currently using debug keys for development builds
-            signingConfig = signingConfigs.getByName("debug")
+            // Production signing with release keystore
+            signingConfig = signingConfigs.getByName("release")
 
             // Enable code shrinking and obfuscation for smaller APK size
             isShrinkResources = true
