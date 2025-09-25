@@ -12,7 +12,13 @@ class FxRates extends HiveObject {
   @HiveField(1)
   Map<String, double> rates; // uppercased currency codes
 
-  FxRates({required this.baseCurrency, Map<String, double>? rates}) : rates = rates ?? {};
+  /// Timestamp when the rates were fetched. Useful for freshness checks.
+  @HiveField(2)
+  DateTime fetchedAt;
+
+  FxRates({required this.baseCurrency, Map<String, double>? rates, DateTime? fetchedAt})
+      : rates = rates ?? {},
+        fetchedAt = fetchedAt ?? DateTime.now();
 }
 
 

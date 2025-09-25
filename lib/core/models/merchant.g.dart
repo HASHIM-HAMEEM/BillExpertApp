@@ -28,6 +28,7 @@ class MerchantProfileAdapter extends TypeAdapter<MerchantProfile> {
       invoicePrefix: fields[8] as String,
       nextInvoiceNumber: fields[9] as int,
       currencyCode: fields[10] as String,
+      displayCurrencyCode: fields[14] as String?,
       defaultTerms: fields[11] as String?,
       defaultNotes: fields[12] as String?,
       defaultDueDays: fields[13] as int?,
@@ -37,7 +38,7 @@ class MerchantProfileAdapter extends TypeAdapter<MerchantProfile> {
   @override
   void write(BinaryWriter writer, MerchantProfile obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.businessName)
       ..writeByte(1)
@@ -65,7 +66,9 @@ class MerchantProfileAdapter extends TypeAdapter<MerchantProfile> {
       ..writeByte(12)
       ..write(obj.defaultNotes)
       ..writeByte(13)
-      ..write(obj.defaultDueDays);
+      ..write(obj.defaultDueDays)
+      ..writeByte(14)
+      ..write(obj.displayCurrencyCode);
   }
 
   @override

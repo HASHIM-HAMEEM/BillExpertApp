@@ -91,9 +91,10 @@ class CurrencyCacheService {
 
     // Convert and cache
     try {
-      final convertedValue = await _currencyService.convertAmountValue(
+      final convertedValue = await _currencyService.convertAmountNumeric(
         amount,
         fromCurrency,
+        toCurrency,
       );
 
       _cache[key] = CurrencyConversionCache(

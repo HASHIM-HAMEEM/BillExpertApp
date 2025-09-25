@@ -19,17 +19,19 @@ class FxRatesAdapter extends TypeAdapter<FxRates> {
     return FxRates(
       baseCurrency: fields[0] as String,
       rates: (fields[1] as Map?)?.cast<String, double>(),
-    );
+    )..fetchedAt = fields[2] as DateTime;
   }
 
   @override
   void write(BinaryWriter writer, FxRates obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
       ..write(obj.baseCurrency)
       ..writeByte(1)
-      ..write(obj.rates);
+      ..write(obj.rates)
+      ..writeByte(2)
+      ..write(obj.fetchedAt);
   }
 
   @override
