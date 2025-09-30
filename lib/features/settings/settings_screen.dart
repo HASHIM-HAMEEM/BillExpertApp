@@ -128,7 +128,7 @@ class SettingsScreen extends ConsumerWidget {
                   const Text('🇵🇸', style: TextStyle(fontSize: 20)),
                   const SizedBox(width: 8),
                   Text(
-                    'Free Palestine',
+                    'Palestine ❤️ ',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
