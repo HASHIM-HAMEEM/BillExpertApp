@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 
 import '../../app/themes/app_theme.dart';
+import '../../core/config/app_config.dart';
 import '../../core/models/merchant.dart';
 import '../../core/models/currency.dart';
 import '../../core/models/fx_rates.dart';
@@ -1719,7 +1720,8 @@ class _CurrencySheetState extends State<_CurrencySheet> {
                                               ],
                                             ),
                                           ),
-                                        if (_debugLines.isNotEmpty) ...[
+                                        // Debug information only shown in debug mode
+                                        if (_debugLines.isNotEmpty && !AppConfig.isProduction) ...[
                                           const SizedBox(height: 12),
                                           Container(
                                             width: double.infinity,
